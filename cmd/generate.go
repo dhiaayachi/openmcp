@@ -5,15 +5,15 @@ package cmd
 
 import (
 	"errors"
-	"fmt"
 	"github.com/dhiaayachi/openmcp/generator"
-	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/spf13/cobra"
 )
 
 var (
-	input  string
-	output string
+	input   string
+	output  string
+	baseUrl string
+	module  string
 )
 
 // MCPServerData holds the variables that will be passed to the template.
@@ -37,17 +37,13 @@ var generateCmd = &cobra.Command{
 		if output == "" {
 			return errors.New("output directory is empty")
 		}
-		loader := &openapi3.Loader{Context: cmd.Context(), IsExternalRefsAllowed: true}
-		doc, err := loader.LoadFromFile(input)
-		if err != nil {
-			return fmt.Errorf("loading input file '%s' failed: %v", input, err)
+		if baseUrl == "" {
+			return errors.New("base url is required")
 		}
-		// Validate document
-		err = doc.Validate(cmd.Context())
-		if err != nil {
-			return fmt.Errorf("validate openapi spec failed: %v", err)
+		if module == "" {
+			return errors.New("module is required")
 		}
-		return generator.Generate(input, output)
+		return generator.Generate(input, output, baseUrl, module)
 	},
 }
 
@@ -55,4 +51,6 @@ func init() {
 	rootCmd.AddCommand(generateCmd)
 	generateCmd.PersistentFlags().StringVarP(&input, "input", "i", "", "input openapi file")
 	generateCmd.PersistentFlags().StringVarP(&output, "output", "o", "", "output directory, where the generated mcp-server is stored")
+	generateCmd.PersistentFlags().StringVarP(&baseUrl, "url", "b", "", "base url for openapi server")
+	generateCmd.PersistentFlags().StringVarP(&module, "module", "m", "", "module name")
 }
