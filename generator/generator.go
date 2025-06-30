@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"text/template"
 	"unicode"
@@ -84,9 +85,12 @@ func Generate(input string, outputDir string, baseUrl string, module string) err
 				continue
 			}
 
+			reg := regexp.MustCompile(`[^a-zA-Z0-9]+`)
+			toolName := reg.ReplaceAllString(operation.Summary, "")
+			toolName = toCamelCase(strings.ReplaceAll(toolName, " ", "_"))
 			endpoint := apiEndpoint{
-				ToolName:        toCamelCase(strings.ReplaceAll(operation.Summary, " ", "_")),
-				HandlerFuncName: toCamelCase("handle_" + strings.ReplaceAll(operation.Summary, " ", "_")),
+				ToolName:        toolName,
+				HandlerFuncName: toCamelCase("handle_" + strings.ReplaceAll(toolName, " ", "_")),
 				Description:     strings.ReplaceAll(operation.Summary, "\"", "\\\""),
 				Path:            path,
 				Method:          method,
@@ -94,10 +98,15 @@ func Generate(input string, outputDir string, baseUrl string, module string) err
 
 			for _, param := range operation.Parameters {
 				p := param.Value
+				schema, err := goTypeFromSchema(p.Schema.Value)
+				if err != nil {
+					log.Printf("Failed to convert schema to Go type: %v", err)
+					continue
+				}
 				endpoint.Parameters = append(endpoint.Parameters, toolParameter{
 					Name:        toCamelCase(p.Name),
 					JSONName:    p.Name,
-					TypeName:    goTypeFromSchema(p.Schema.Value),
+					TypeName:    schema,
 					Description: strings.ReplaceAll(p.Description, "\"", "\\\""),
 					Required:    p.Required,
 				})
@@ -109,10 +118,15 @@ func Generate(input string, outputDir string, baseUrl string, module string) err
 				if jsonContent, ok := content["application/json"]; ok && jsonContent.Schema != nil {
 					if jsonContent.Schema.Value.Type.Includes("object") {
 						for propName, propSchema := range jsonContent.Schema.Value.Properties {
+							schema, err := goTypeFromSchema(propSchema.Value)
+							if err != nil {
+								log.Printf("Failed to convert schema to Go type: %v", err)
+								continue
+							}
 							endpoint.Parameters = append(endpoint.Parameters, toolParameter{
 								Name:        toCamelCase(propName),
 								JSONName:    propName,
-								TypeName:    goTypeFromSchema(propSchema.Value),
+								TypeName:    schema,
 								Description: strings.ReplaceAll(propSchema.Value.Description, "\"", "\\\""),
 								Required:    isRequired(propName, jsonContent.Schema.Value.Required),
 							})
@@ -289,23 +303,26 @@ func toCamelCase(s string) string {
 }
 
 // goTypeFromSchema converts an OpenAPI schema type to a Go type.
-func goTypeFromSchema(schema *openapi3.Schema) string {
+func goTypeFromSchema(schema *openapi3.Schema) (string, error) {
 	if schema.Type.Includes("string") {
-		return "String"
+		return "String", nil
 	}
 	if schema.Type.Includes("integer") {
-		return "Number"
+		return "Number", nil
 	}
 	if schema.Type.Includes("number") {
-		return "Number"
+		return "Number", nil
 	}
 	if schema.Type.Includes("boolean") {
-		return "Boolean"
+		return "Boolean", nil
 	}
 	if schema.Type.Includes("array") {
-		return "Array"
+		return "Array", nil
 	}
-	return "interface{}"
+	if schema.Type.Includes("object") {
+		return "Object", nil
+	}
+	return "", fmt.Errorf("unsupported schema type: %s", schema.Type)
 }
 
 // isRequired checks if a property name is in the list of required properties.
