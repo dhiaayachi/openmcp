@@ -88,6 +88,7 @@ func Generate(input string, outputDir string, baseUrl string, module string) err
 			reg := regexp.MustCompile(`[^a-zA-Z0-9]+`)
 			toolName := reg.ReplaceAllString(operation.Summary, "")
 			toolName = toCamelCase(strings.ReplaceAll(toolName, " ", "_"))
+			toolName = toolName[:min(len(toolName), 60)]
 			endpoint := apiEndpoint{
 				ToolName:        toolName,
 				HandlerFuncName: toCamelCase("handle_" + strings.ReplaceAll(toolName, " ", "_")),
